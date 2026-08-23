@@ -2,14 +2,14 @@ import os
 from src.data_loader import load_data
 from src.feature_engineering import create_payment_features
 from src.signals import generate_signals
-from src.ranking import calculate_rankings
+from src.ranking import create_ranked_worklist
 from src.fairness import analyze_fairness
 
 def get_fairness_data():
     cases, payments = load_data()
     features = create_payment_features(cases, payments)
     signals = generate_signals(features)
-    ranked = calculate_rankings(signals)
+    ranked = create_ranked_worklist(signals, top_n=4200)
     return analyze_fairness(ranked, output_dir="output_temp")
 
 def test_fairness_columns():

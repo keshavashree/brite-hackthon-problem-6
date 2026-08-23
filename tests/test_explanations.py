@@ -1,14 +1,14 @@
 from src.data_loader import load_data
 from src.feature_engineering import create_payment_features
 from src.signals import generate_signals
-from src.ranking import calculate_rankings
+from src.ranking import create_ranked_worklist
 from src.explanations import generate_explanations
 
 def get_explained_data():
     cases, payments = load_data()
     features = create_payment_features(cases, payments)
     signals = generate_signals(features)
-    ranked = calculate_rankings(signals)
+    ranked = create_ranked_worklist(signals, top_n=4200)
     return generate_explanations(ranked)
 
 def test_explanations_exist():

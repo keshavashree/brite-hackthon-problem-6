@@ -1,29 +1,79 @@
 from src.data_loader import load_data
 from src.feature_engineering import create_payment_features
 from src.signals import generate_signals
-from src.ranking import calculate_rankings
+from src.ranking import (
+    calculate_investigation_score,
+    create_ranked_worklist,
+)
 
-def get_ranked_data():
+
+def get_signals():
     cases, payments = load_data()
-    features = create_payment_features(cases, payments)
-    signals = generate_signals(features)
-    return calculate_rankings(signals)
 
-def test_ranking_row_count():
-    ranked = get_ranked_data()
-    assert len(ranked) == 4200
+    features = create_payment_features(
+        cases,
+        payments
+    )
 
-def test_ranking_scores_bounded():
-    ranked = get_ranked_data()
-    assert ranked["prioritisation_score"].min() >= 0.0
-    assert ranked["prioritisation_score"].max() <= 1.0
+    return generate_signals(features)
 
-def test_ranking_sequential():
-    ranked = get_ranked_data()
-    expected_ranks = list(range(1, 4201))
-    assert list(ranked["rank"]) == expected_ranks
 
-def test_c33248_not_in_top_20():
-    ranked = get_ranked_data()
-    top_20_case_ids = set(ranked.head(20)["case_id"])
-    assert "C-33248" not in top_20_case_ids
+def test_scores_are_created():
+    signals = get_signals()
+
+    scored = calculate_investigation_score(signals)
+
+    assert "investigation_score" in scored.columns
+    assert len(scored) == 4200
+
+
+def test_scores_are_non_negative():
+    signals = get_signals()
+
+    scored = calculate_investigation_score(signals)
+
+    assert (scored["investigation_score"] >= 0).all()
+
+
+def test_worklist_contains_20_cases():
+    signals = get_signals()
+
+    worklist = create_ranked_worklist(
+        signals,
+        top_n=20
+    )
+
+    assert len(worklist) == 20
+
+
+def test_worklist_ranks_are_correct():
+    signals = get_signals()
+
+    worklist = create_ranked_worklist(
+        signals,
+        top_n=20
+    )
+
+    assert list(worklist["rank"]) == list(range(1, 21))
+
+
+def test_worklist_case_ids_are_unique():
+    signals = get_signals()
+
+    worklist = create_ranked_worklist(
+        signals,
+        top_n=20
+    )
+
+    assert worklist["case_id"].is_unique
+
+
+def test_c33248_not_selected_due_to_strong_financial_signals():
+    signals = get_signals()
+
+    worklist = create_ranked_worklist(
+        signals,
+        top_n=20
+    )
+
+    assert "C-33248" not in set(worklist["case_id"])
