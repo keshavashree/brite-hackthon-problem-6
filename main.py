@@ -1,16 +1,20 @@
 from src.data_loader import load_data, DataValidationError
 from src.feature_engineering import create_payment_features
-
+from src.signals import generate_signals
+from src.ranking import calculate_rankings
+from src.explanations import generate_explanations
+from src.fairness import analyze_fairness
+import os
 
 def main():
     print("=" * 60)
     print("BRITE SPARK 2026 — PROBLEM 6")
-    print("THE OVERPAYMENT SIGNAL")
+    print("THE OVERPAYMENT SIGNAL PIPELINE")
     print("=" * 60)
 
     try:
         # -----------------------------------------------------
-        # Load data
+        # 1. Load data
         # -----------------------------------------------------
         cases, payments = load_data()
 
@@ -19,27 +23,71 @@ def main():
         print(f"  Payments loaded: {len(payments):,}")
 
         # -----------------------------------------------------
-        # Feature engineering
+        # 2. Feature engineering
         # -----------------------------------------------------
         print("\nCreating payment features...")
-
-        features = create_payment_features(
-            cases,
-            payments
-        )
-        c33248 = features[
-        features["case_id"] == "C-33248"
-        ]
-        print("\nC-33248 feature snapshot:")
-        print(c33248.to_string(index=False))
-
+        features = create_payment_features(cases, payments)
         print("✓ Feature engineering successful.")
-        print(f"  Feature rows:    {len(features):,}")
-        print(f"  Feature columns: {len(features.columns):,}")
 
-        print("\nFeature columns:")
-        for column in features.columns:
-            print(f"  - {column}")
+        # -----------------------------------------------------
+        # 3. Signal generation
+        # -----------------------------------------------------
+        print("\nGenerating risk signals...")
+        signals = generate_signals(features)
+        print("✓ Risk signal generation successful.")
+
+        # -----------------------------------------------------
+        # 4. Case ranking
+        # -----------------------------------------------------
+        print("\nRanking prioritized cases...")
+        ranked = calculate_rankings(signals)
+        print("✓ Case ranking successful.")
+
+        # -----------------------------------------------------
+        # 5. Plain-language explanations
+        # -----------------------------------------------------
+        print("\nGenerating plain-language explanations...")
+        explained = generate_explanations(ranked)
+        print("✓ Explanation generation successful.")
+
+        # -----------------------------------------------------
+        # 6. Fairness analysis
+        # -----------------------------------------------------
+        print("\nPerforming demographic fairness analysis...")
+        fairness_report = analyze_fairness(explained, output_dir="output")
+        print("✓ Fairness analysis completed (saved to output/fairness_report.csv).")
+
+        # -----------------------------------------------------
+        # 7. Write outputs
+        # -----------------------------------------------------
+        output_dir = "output"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        # Save full worklist
+        explained.to_csv(os.path.join(output_dir, "ranked_cases.csv"), index=False)
+        
+        # Save top 20
+        top_20 = explained.head(20).copy()
+        top_20_summary = top_20[["rank", "case_id", "prioritisation_score", "explanation"]]
+        top_20_summary.to_csv(os.path.join(output_dir, "top_20_worklist.csv"), index=False)
+        print("✓ Saved ranked worklist and top 20 to output/ directory.")
+
+        # -----------------------------------------------------
+        # 8. Print Top 20 table
+        # -----------------------------------------------------
+        print("\n" + "=" * 90)
+        print("TOP 20 RANKED BENEFIT CASES FOR INVESTIGATION REVIEW")
+        print("=" * 90)
+        print(f"{'Rank':<5} | {'Case ID':<10} | {'Score':<6} | {'Explanation'}")
+        print("-" * 90)
+        for _, row in top_20_summary.iterrows():
+            explanation = row["explanation"]
+            # Truncate explanation if too long for display
+            if len(explanation) > 60:
+                explanation = explanation[:57] + "..."
+            print(f"{int(row['rank']):<5} | {row['case_id']:<10} | {row['prioritisation_score']:<6.4f} | {explanation}")
+        print("=" * 90)
 
     except FileNotFoundError as error:
         print(f"\nERROR: {error}")
