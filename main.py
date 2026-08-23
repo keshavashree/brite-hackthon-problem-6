@@ -4,6 +4,7 @@ from src.signals import generate_signals
 from src.ranking import calculate_investigation_score, create_ranked_worklist
 from src.explanations import add_explanations
 from src.fairness import run_fairness_audit_at_k
+from src.feedback import load_feedback, apply_feedback
 import pandas as pd
 import os
 
@@ -38,19 +39,47 @@ def main():
         print("✓ Risk signal generation successful.")
 
         # -----------------------------------------------------
-        # 4. Case ranking
+        # 4. Case ranking & investigator feedback
         # -----------------------------------------------------
         print("\nRanking prioritized cases...")
         ranked_cases = create_ranked_worklist(signals, top_n=None)
-        worklist = ranked_cases.head(20)
         print("✓ Case ranking successful.")
+
+        print("\nLoading investigator feedback...")
+        feedback = load_feedback()
+        
+        print("\n" + "=" * 60)
+        print("INVESTIGATOR FEEDBACK")
+        print("=" * 60)
+        print(f"Feedback records: {len(feedback)}")
+
+        ranked_after_feedback = apply_feedback(ranked_cases, feedback)
+        
+        if not feedback.empty:
+            print("\nFeedback applied.")
+            affected_cases = set(feedback["case_id"])
+            affected = ranked_after_feedback[ranked_after_feedback["case_id"].isin(affected_cases)]
+            print(
+                affected[
+                    [
+                        "case_id",
+                        "investigation_score",
+                        "feedback_adjustment",
+                        "adjusted_score",
+                        "rank_after_feedback",
+                    ]
+                ].to_string(index=False)
+            )
+        print("=" * 60)
+
+        worklist = ranked_after_feedback.head(20)
 
         # -----------------------------------------------------
         # 5. Plain-language explanations
         # -----------------------------------------------------
         print("\nGenerating plain-language explanations...")
         worklist = add_explanations(worklist)
-        explained_all = add_explanations(ranked_cases)
+        explained_all = add_explanations(ranked_after_feedback)
         print("✓ Explanation generation successful.")
 
         print("\n" + "=" * 60)
@@ -59,10 +88,10 @@ def main():
 
         for _, row in worklist.iterrows():
             print(
-                f"\nRank {int(row['rank'])}: {row['case_id']}"
+                f"\nRank {int(row['rank_after_feedback'])}: {row['case_id']}"
             )
             print(
-                f"Score: {row['investigation_score']:.3f}"
+                f"Score: {row['adjusted_score']:.3f}"
             )
             print(
                 f"Reason: {row['reason']}"
@@ -73,7 +102,7 @@ def main():
         # 6. Fairness analysis
         # -----------------------------------------------------
         print("\nPerforming demographic fairness analysis...")
-        fairness_results = run_fairness_audit_at_k(cases, ranked_cases)
+        fairness_results = run_fairness_audit_at_k(cases, ranked_after_feedback)
         
         print("\n" + "=" * 60)
         print("FAIRNESS AUDIT")
@@ -100,7 +129,7 @@ def main():
         
         # Save top 20
         top_20 = worklist.copy()
-        top_20_summary = top_20[["rank", "case_id", "investigation_score", "reason", "evidence"]]
+        top_20_summary = top_20[["rank_after_feedback", "case_id", "adjusted_score", "reason", "evidence"]]
         top_20_summary.to_csv(os.path.join(output_dir, "top_20_worklist.csv"), index=False)
         
         # Save fairness reports
@@ -128,7 +157,7 @@ def main():
             # Truncate reason if too long for display
             if len(reason) > 60:
                 reason = reason[:57] + "..."
-            print(f"{int(row['rank']):<5} | {row['case_id']:<10} | {row['investigation_score']:<6.4f} | {reason}")
+            print(f"{int(row['rank_after_feedback']):<5} | {row['case_id']:<10} | {row['adjusted_score']:<6.4f} | {reason}")
         print("=" * 90)
 
     except FileNotFoundError as error:

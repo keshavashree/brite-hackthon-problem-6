@@ -69,3 +69,34 @@ risk signal.
 
 These thresholds are intended for investigation prioritisation,
 not to establish improper payment.
+
+## 2026-08-23 — Investigator Feedback Architecture
+
+### Decision
+
+Keep investigator feedback outside the base financial scoring model.
+
+### Why
+
+The Day-2 Surprise Challenge requires the system to incorporate
+investigator feedback without retraining or rebuilding the model.
+
+Separating feedback from the base ranking allows the system to
+change how signals are treated without rewriting the feature
+engineering or ranking pipeline.
+
+### C-33248
+
+The investigator determined that the referral was caused by
+Department administrative activity rather than evidence of
+improper payment.
+
+The system therefore does not treat contact attempts, language
+preference or administrative adjustments as direct financial-risk
+signals.
+
+### Limitation
+
+The initial feedback mechanism uses a simple adjustment layer.
+This will be refined so future feedback can modify signal treatment
+rather than relying on case-specific hard-coded rules.
