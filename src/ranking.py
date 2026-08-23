@@ -36,7 +36,7 @@ def calculate_investigation_score(
 
 def create_ranked_worklist(
     signals: pd.DataFrame,
-    top_n: int = 20
+    top_n: int | None = 20
 ) -> pd.DataFrame:
     """
     Create the ranked investigation worklist.
@@ -60,5 +60,8 @@ def create_ranked_worklist(
     )
 
     ranked["rank"] = ranked.index + 1
+
+    if top_n is None:
+        return ranked
 
     return ranked.head(top_n)

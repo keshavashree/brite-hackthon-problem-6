@@ -3,7 +3,8 @@ from src.feature_engineering import create_payment_features
 from src.signals import generate_signals
 from src.ranking import calculate_investigation_score, create_ranked_worklist
 from src.explanations import add_explanations
-from src.fairness import analyze_fairness
+from src.fairness import run_fairness_audit_at_k
+import pandas as pd
 import os
 
 def main():
@@ -40,16 +41,22 @@ def main():
         # 4. Case ranking
         # -----------------------------------------------------
         print("\nRanking prioritized cases...")
-        ranked = create_ranked_worklist(signals, top_n=4200)
-        
-        # Also print the specific TOP 20 WORKLIST requested by the user
-        worklist = create_ranked_worklist(signals, top_n=20)
+        ranked_cases = create_ranked_worklist(signals, top_n=None)
+        worklist = ranked_cases.head(20)
+        print("✓ Case ranking successful.")
+
+        # -----------------------------------------------------
+        # 5. Plain-language explanations
+        # -----------------------------------------------------
+        print("\nGenerating plain-language explanations...")
         worklist = add_explanations(worklist)
-        
+        explained_all = add_explanations(ranked_cases)
+        print("✓ Explanation generation successful.")
+
         print("\n" + "=" * 60)
         print("TOP 20 INVESTIGATION WORKLIST")
         print("=" * 60)
-        
+
         for _, row in worklist.iterrows():
             print(
                 f"\nRank {int(row['rank'])}: {row['case_id']}"
@@ -61,21 +68,25 @@ def main():
                 f"Reason: {row['reason']}"
             )
         print("=" * 60)
-        print("✓ Case ranking successful.")
-
-        # -----------------------------------------------------
-        # 5. Plain-language explanations
-        # -----------------------------------------------------
-        print("\nGenerating plain-language explanations...")
-        explained = add_explanations(ranked)
-        print("✓ Explanation generation successful.")
 
         # -----------------------------------------------------
         # 6. Fairness analysis
         # -----------------------------------------------------
         print("\nPerforming demographic fairness analysis...")
-        fairness_report = analyze_fairness(explained, output_dir="output")
-        print("✓ Fairness analysis completed (saved to output/fairness_report.csv).")
+        fairness_results = run_fairness_audit_at_k(cases, ranked_cases)
+        
+        print("\n" + "=" * 60)
+        print("FAIRNESS AUDIT")
+        print("=" * 60)
+
+        # Display audit reports
+        for k, results in fairness_results.items():
+            print(f"\n=================== Cutoff k = {k} ===================")
+            for dimension, report in results.items():
+                print(f"\n--- {dimension} ---")
+                print(report.to_string(index=False))
+        print("=" * 60)
+        print("✓ Fairness analysis completed.")
 
         # -----------------------------------------------------
         # 7. Write outputs
@@ -85,12 +96,23 @@ def main():
             os.makedirs(output_dir)
             
         # Save full worklist
-        explained.to_csv(os.path.join(output_dir, "ranked_cases.csv"), index=False)
+        explained_all.to_csv(os.path.join(output_dir, "ranked_cases.csv"), index=False)
         
         # Save top 20
-        top_20 = explained.head(20).copy()
+        top_20 = worklist.copy()
         top_20_summary = top_20[["rank", "case_id", "investigation_score", "reason", "evidence"]]
         top_20_summary.to_csv(os.path.join(output_dir, "top_20_worklist.csv"), index=False)
+        
+        # Save fairness reports
+        # Save the k=20 report to output/fairness_report.csv
+        k_20_reports = []
+        for dim, report in fairness_results[20].items():
+            report = report.copy()
+            report.insert(0, "demographic_dimension", dim)
+            report = report.rename(columns={dim: "group_value"})
+            k_20_reports.append(report)
+        fairness_report_df = pd.concat(k_20_reports, ignore_index=True)
+        fairness_report_df.to_csv(os.path.join(output_dir, "fairness_report.csv"), index=False)
         print("✓ Saved ranked worklist and top 20 to output/ directory.")
 
         # -----------------------------------------------------

@@ -1,64 +1,141 @@
 import pandas as pd
-import os
 
-def analyze_fairness(ranked_cases: pd.DataFrame, output_dir: str = "output") -> pd.DataFrame:
+
+AUDIT_COLUMNS = [
+    "age_band",
+    "language_preference",
+    "district",
+    "tenure",
+]
+
+
+def calculate_group_metrics(
+    cases: pd.DataFrame,
+    ranked_cases: pd.DataFrame,
+    column: str,
+) -> pd.DataFrame:
     """
-    Examine the distribution of prioritised cases across demographic groups.
-    
-    Returns a DataFrame summarizing representation and selection rates.
+    Compare population representation with representation
+    in the selected investigation worklist.
     """
-    df = ranked_cases.copy()
-    
-    # ---------------------------------------------------------
-    # Merge demographic columns if not present
-    # ---------------------------------------------------------
-    demographic_cols = ["language_preference", "age_band", "district"]
-    if not all(col in df.columns for col in demographic_cols):
-        from src.data_loader import load_cases
-        cases = load_cases()
-        df = df.merge(
-            cases[["case_id"] + [c for c in demographic_cols if c not in df.columns]],
-            on="case_id",
-            how="left"
+
+    population = (
+        cases[column]
+        .value_counts(dropna=False)
+        .rename("population_count")
+        .reset_index()
+    )
+
+    population.columns = [
+        column,
+        "population_count",
+    ]
+
+    population["population_rate"] = (
+        population["population_count"]
+        / len(cases)
+    )
+
+    selected = (
+        ranked_cases[column]
+        .value_counts(dropna=False)
+        .rename("selected_count")
+        .reset_index()
+    )
+
+    selected.columns = [
+        column,
+        "selected_count",
+    ]
+
+    result = population.merge(
+        selected,
+        on=column,
+        how="left",
+    )
+
+    result["selected_count"] = (
+        result["selected_count"]
+        .fillna(0)
+        .astype(int)
+    )
+
+    total_selected = len(ranked_cases)
+
+    if total_selected > 0:
+        result["selected_rate"] = (
+            result["selected_count"]
+            / total_selected
         )
-        
-    total_cases = len(df)
-    top_20_ids = set(df.head(20)["case_id"])
-    top_100_ids = set(df.head(100)["case_id"])
-    
-    rows = []
-    
-    for col in demographic_cols:
-        if col not in df.columns:
-            continue
-            
-        # Get overall counts
-        counts = df[col].value_counts()
-        
-        for val, pop_count in counts.items():
-            # Get cases in this group
-            group_df = df[df[col] == val]
-            group_case_ids = set(group_df["case_id"])
-            
-            top_20_count = len(group_case_ids.intersection(top_20_ids))
-            top_100_count = len(group_case_ids.intersection(top_100_ids))
-            
-            rows.append({
-                "demographic_dimension": col,
-                "group_value": str(val),
-                "population_count": pop_count,
-                "population_share": pop_count / total_cases,
-                "top_20_count": top_20_count,
-                "top_20_selection_rate": top_20_count / pop_count if pop_count > 0 else 0.0,
-                "top_100_count": top_100_count,
-                "top_100_selection_rate": top_100_count / pop_count if pop_count > 0 else 0.0,
-            })
-            
-    report = pd.DataFrame(rows)
-    
-    # Ensure output directory exists and save CSV
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    report.to_csv(os.path.join(output_dir, "fairness_report.csv"), index=False)
-    
-    return report
+    else:
+        result["selected_rate"] = 0.0
+
+    result["selection_ratio"] = (
+        result["selected_rate"]
+        / result["population_rate"]
+    )
+
+    return result
+
+
+def run_fairness_audit(
+    cases: pd.DataFrame,
+    worklist: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    """
+    Run fairness analysis across the required population groups.
+
+    The audit does not modify ranking scores.
+    """
+
+    # Add demographic/context columns to the worklist.
+    worklist_with_context = worklist.merge(
+        cases[
+            [
+                "case_id",
+                "age_band",
+                "language_preference",
+                "district",
+                "tenure",
+            ]
+        ],
+        on="case_id",
+        how="left",
+    )
+
+    results = {}
+
+    for column in AUDIT_COLUMNS:
+        results[column] = calculate_group_metrics(
+            cases,
+            worklist_with_context,
+            column,
+        )
+
+    return results
+
+
+def run_fairness_audit_at_k(
+    cases: pd.DataFrame,
+    ranked_cases: pd.DataFrame,
+    k_values: list[int] | None = None,
+) -> dict[int, dict[str, pd.DataFrame]]:
+    """
+    Run fairness analysis at several ranking cutoffs.
+    """
+
+    if k_values is None:
+        k_values = [20, 50, 100, 200]
+
+    results = {}
+
+    for k in k_values:
+
+        selected = ranked_cases.head(k)
+
+        results[k] = run_fairness_audit(
+            cases,
+            selected,
+        )
+
+    return results
