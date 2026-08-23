@@ -74,6 +74,35 @@ def run_pipeline():
         feedback,
     )
 
+    feedback_comparison = ranked_cases[
+        [
+            "case_id",
+            "investigation_score",
+        ]
+    ].copy()
+
+    feedback_comparison = feedback_comparison.merge(
+        ranked_after_feedback[
+            [
+                "case_id",
+                "adjusted_score",
+                "rank_after_feedback",
+            ]
+        ],
+        on="case_id",
+        how="left",
+    )
+
+    feedback_comparison["score_change"] = (
+        feedback_comparison["adjusted_score"]
+        - feedback_comparison["investigation_score"]
+    )
+
+    feedback_comparison.to_csv(
+        OUTPUT_DIR / "feedback_comparison.csv",
+        index=False,
+    )
+
     # ---------------------------------------------------------
     # 7. Final Top 20
     # ---------------------------------------------------------

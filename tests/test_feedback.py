@@ -1,45 +1,12 @@
 import pandas as pd
 
-from src.feedback import apply_feedback
+from src.feedback import (
+    build_signal_adjustments,
+    apply_feedback,
+)
 
 
-def test_empty_feedback_does_not_change_scores():
-
-    ranked = pd.DataFrame(
-        {
-            "case_id": ["C-1", "C-2"],
-            "investigation_score": [0.8, 0.6],
-        }
-    )
-
-    feedback = pd.DataFrame(
-        columns=[
-            "case_id",
-            "feedback_type",
-            "reason",
-            "signal_category",
-            "action",
-        ]
-    )
-
-    result = apply_feedback(
-        ranked,
-        feedback,
-    )
-
-    assert list(
-        result["investigation_score"]
-    ) == [0.8, 0.6]
-
-
-def test_false_positive_feedback_changes_score():
-
-    ranked = pd.DataFrame(
-        {
-            "case_id": ["C-33248", "C-2"],
-            "investigation_score": [0.8, 0.6],
-        }
-    )
+def test_feedback_category_is_converted_to_adjustment():
 
     feedback = pd.DataFrame(
         {
@@ -51,28 +18,32 @@ def test_false_positive_feedback_changes_score():
             "signal_category": [
                 "administrative_activity"
             ],
-            "action": ["downweight"],
+            "action": [
+                "exclude_from_risk"
+            ],
         }
     )
 
-    result = apply_feedback(
-        ranked,
-        feedback,
+    adjustments = build_signal_adjustments(
+        feedback
     )
 
-    affected = result[
-        result["case_id"] == "C-33248"
-    ].iloc[0]
-
-    assert affected["adjusted_score"] < 0.8
+    assert adjustments[
+        "administrative_activity"
+    ] == 0.0
 
 
-def test_feedback_does_not_retrain_or_modify_base_score():
+def test_feedback_does_not_change_base_score():
 
     ranked = pd.DataFrame(
         {
             "case_id": ["C-33248"],
             "investigation_score": [0.8],
+            "award_deviation_signal": [0.0],
+            "persistence_signal": [0.0],
+            "duplicate_payment_signal": [0.0],
+            "multiple_payment_signal": [0.0],
+            "monthly_change_signal": [0.0],
         }
     )
 
@@ -86,7 +57,9 @@ def test_feedback_does_not_retrain_or_modify_base_score():
             "signal_category": [
                 "administrative_activity"
             ],
-            "action": ["downweight"],
+            "action": [
+                "exclude_from_risk"
+            ],
         }
     )
 

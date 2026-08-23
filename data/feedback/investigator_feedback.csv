@@ -1,2 +1,2 @@
 case_id,feedback_type,reason,signal_category,action
-C-33248,false_positive,Administrative activity caused by Department processing,administrative_activity,downweight
+C-33248,false_positive,Administrative activity caused by Department processing,administrative_activity,exclude_from_risk

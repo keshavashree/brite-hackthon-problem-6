@@ -100,3 +100,29 @@ signals.
 The initial feedback mechanism uses a simple adjustment layer.
 This will be refined so future feedback can modify signal treatment
 rather than relying on case-specific hard-coded rules.
+
+## 2026-08-23 — Signal-Level Feedback
+
+### Decision
+
+Investigator feedback is represented using a signal category and
+action rather than a case-specific exclusion rule.
+
+### Why
+
+A case-specific rule would solve only the observed example and
+would require code changes for every new investigator finding.
+
+Signal-level feedback allows future cases to benefit from the
+same investigator knowledge without modifying the core pipeline.
+
+### Example
+
+Administrative activity identified in the Surprise Challenge is
+not treated as a financial-risk signal.
+
+### Important Boundary
+
+Investigator feedback does not establish that a case is improper.
+It changes investigation prioritisation based on documented
+human review.

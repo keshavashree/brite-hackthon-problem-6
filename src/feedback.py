@@ -25,13 +25,7 @@ REQUIRED_FEEDBACK_COLUMNS = {
 def load_feedback(
     path: Path = FEEDBACK_FILE,
 ) -> pd.DataFrame:
-    """
-    Load investigator feedback.
-
-    Feedback is external to the core ranking model so that
-    investigator knowledge can be incorporated without
-    retraining the underlying scoring system.
-    """
+    """Load investigator feedback."""
 
     if not path.exists():
         return pd.DataFrame(
@@ -54,66 +48,126 @@ def load_feedback(
     return feedback
 
 
+def build_signal_adjustments(
+    feedback: pd.DataFrame,
+) -> dict[str, float]:
+    """
+    Convert investigator feedback into signal-level adjustments.
+
+    The adjustment is associated with a signal category rather
+    than a specific case.
+    """
+
+    adjustments = {}
+
+    if feedback.empty:
+        return adjustments
+
+    for _, row in feedback.iterrows():
+
+        category = row["signal_category"]
+        action = row["action"]
+
+        if action == "exclude_from_risk":
+            adjustments[category] = 0.0
+
+        elif action == "downweight":
+            adjustments[category] = 0.5
+
+        elif action == "upweight":
+            adjustments[category] = 1.25
+
+    return adjustments
+
+
 def apply_feedback(
     ranked_cases: pd.DataFrame,
     feedback: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Apply investigator feedback to an existing ranking.
+    Apply investigator feedback to the ranking.
 
-    This function does NOT retrain the model.
-
-    It adjusts the investigation score based on documented
-    investigator feedback.
+    Feedback modifies signal contribution rather than
+    removing individual cases from the ranking.
     """
 
     result = ranked_cases.copy()
 
     if feedback.empty:
+        result["feedback_adjustment"] = 0.0
+        result["adjusted_score"] = result[
+            "investigation_score"
+        ]
+
+        result["rank_after_feedback"] = (
+            result["adjusted_score"]
+            .rank(
+                method="first",
+                ascending=False,
+            )
+            .astype(int)
+        )
+
         return result
 
-    result["feedback_adjustment"] = 0.0
-
-    # ---------------------------------------------------------
-    # Administrative activity feedback
-    #
-    # The Surprise Challenge showed that administrative activity
-    # should not itself be treated as evidence of improper payment.
-    # ---------------------------------------------------------
-
-    administrative_feedback = feedback[
-        (
-            feedback["signal_category"]
-            == "administrative_activity"
-        )
-        & (
-            feedback["action"]
-            == "downweight"
-        )
-    ]
-
-    if not administrative_feedback.empty:
-
-        affected_cases = set(
-            administrative_feedback["case_id"]
-        )
-
-        mask = result["case_id"].isin(
-            affected_cases
-        )
-
-        # Administrative activity is not part of our base
-        # financial score. Therefore this adjustment acts as
-        # a conservative penalty for previously referred cases
-        # whose referral was determined to be administrative.
-        result.loc[
-            mask,
-            "feedback_adjustment",
-        ] = -0.25
+    adjustments = build_signal_adjustments(
+        feedback
+    )
 
     result["adjusted_score"] = (
         result["investigation_score"]
-        + result["feedback_adjustment"]
+    )
+
+    # ---------------------------------------------------------
+    # Administrative activity
+    #
+    # This category is intentionally excluded from the base
+    # financial risk score. Therefore feedback about this
+    # category should not create a new financial penalty.
+    # ---------------------------------------------------------
+
+    if "administrative_activity" in adjustments:
+
+        # No financial signal is associated with this category.
+        # We retain the feedback as governance information.
+        pass
+
+    # ---------------------------------------------------------
+    # Future signal-level adjustments
+    #
+    # These categories can be mapped to actual signal columns
+    # as the feedback dataset grows.
+    # ---------------------------------------------------------
+
+    signal_mapping = {
+        "payment_deviation": "award_deviation_signal",
+        "persistence": "persistence_signal",
+        "duplicate_payment": "duplicate_payment_signal",
+        "multiple_payment": "multiple_payment_signal",
+        "temporal_change": "monthly_change_signal",
+    }
+
+    for category, multiplier in adjustments.items():
+
+        signal_column = signal_mapping.get(category)
+
+        if signal_column is None:
+            continue
+
+        if signal_column not in result.columns:
+            continue
+
+        # Recalculate the contribution associated with this
+        # signal rather than applying a case-specific penalty.
+        result["adjusted_score"] = (
+            result["adjusted_score"]
+            - result[signal_column]
+            + result[signal_column] * multiplier
+        )
+
+    result["feedback_adjustment"] = (
+        result["adjusted_score"]
+        - result["investigation_score"]
     )
 
     result["adjusted_score"] = (
