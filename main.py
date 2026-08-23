@@ -1,170 +1,64 @@
-from src.data_loader import load_data, DataValidationError
-from src.feature_engineering import create_payment_features
-from src.signals import generate_signals
-from src.ranking import calculate_investigation_score, create_ranked_worklist
-from src.explanations import add_explanations
-from src.fairness import run_fairness_audit_at_k
-from src.feedback import load_feedback, apply_feedback
-import pandas as pd
-import os
+from src.pipeline import run_pipeline
+
 
 def main():
-    print("=" * 60)
+    print("=" * 65)
     print("BRITE SPARK 2026 — PROBLEM 6")
-    print("THE OVERPAYMENT SIGNAL PIPELINE")
-    print("=" * 60)
+    print("THE OVERPAYMENT SIGNAL")
+    print("=" * 65)
 
     try:
-        # -----------------------------------------------------
-        # 1. Load data
-        # -----------------------------------------------------
-        cases, payments = load_data()
+        (
+            cases,
+            payments,
+            features,
+            signals,
+            ranked_cases,
+            final_worklist,
+            fairness_results,
+            feedback,
+        ) = run_pipeline()
 
-        print("\n✓ Data loading successful.")
-        print(f"  Cases loaded:    {len(cases):,}")
-        print(f"  Payments loaded: {len(payments):,}")
+        print("\n✓ Pipeline completed successfully.")
 
-        # -----------------------------------------------------
-        # 2. Feature engineering
-        # -----------------------------------------------------
-        print("\nCreating payment features...")
-        features = create_payment_features(cases, payments)
-        print("✓ Feature engineering successful.")
+        print(f"\nCases:             {len(cases):,}")
+        print(f"Payments:          {len(payments):,}")
+        print(f"Feature rows:      {len(features):,}")
+        print(f"Ranked cases:      {len(ranked_cases):,}")
+        print(f"Feedback records:  {len(feedback):,}")
+        print(f"Final worklist:    {len(final_worklist):,}")
 
-        # -----------------------------------------------------
-        # 3. Signal generation
-        # -----------------------------------------------------
-        print("\nGenerating risk signals...")
-        signals = generate_signals(features)
-        print("✓ Risk signal generation successful.")
-
-        # -----------------------------------------------------
-        # 4. Case ranking & investigator feedback
-        # -----------------------------------------------------
-        print("\nRanking prioritized cases...")
-        ranked_cases = create_ranked_worklist(signals, top_n=None)
-        print("✓ Case ranking successful.")
-
-        print("\nLoading investigator feedback...")
-        feedback = load_feedback()
-        
-        print("\n" + "=" * 60)
-        print("INVESTIGATOR FEEDBACK")
-        print("=" * 60)
-        print(f"Feedback records: {len(feedback)}")
-
-        ranked_after_feedback = apply_feedback(ranked_cases, feedback)
-        
-        if not feedback.empty:
-            print("\nFeedback applied.")
-            affected_cases = set(feedback["case_id"])
-            affected = ranked_after_feedback[ranked_after_feedback["case_id"].isin(affected_cases)]
-            print(
-                affected[
-                    [
-                        "case_id",
-                        "investigation_score",
-                        "feedback_adjustment",
-                        "adjusted_score",
-                        "rank_after_feedback",
-                    ]
-                ].to_string(index=False)
-            )
-        print("=" * 60)
-
-        worklist = ranked_after_feedback.head(20)
-
-        # -----------------------------------------------------
-        # 5. Plain-language explanations
-        # -----------------------------------------------------
-        print("\nGenerating plain-language explanations...")
-        worklist = add_explanations(worklist)
-        explained_all = add_explanations(ranked_after_feedback)
-        print("✓ Explanation generation successful.")
-
-        print("\n" + "=" * 60)
+        print("\n" + "-" * 65)
         print("TOP 20 INVESTIGATION WORKLIST")
-        print("=" * 60)
+        print("-" * 65)
 
-        for _, row in worklist.iterrows():
+        for _, row in final_worklist.iterrows():
             print(
-                f"\nRank {int(row['rank_after_feedback'])}: {row['case_id']}"
+                f"\n#{int(row['rank_after_feedback']):02d} "
+                f"{row['case_id']}"
             )
+
             print(
-                f"Score: {row['adjusted_score']:.3f}"
+                f"Score:  {row['adjusted_score']:.3f}"
             )
+
             print(
                 f"Reason: {row['reason']}"
             )
-        print("=" * 60)
 
-        # -----------------------------------------------------
-        # 6. Fairness analysis
-        # -----------------------------------------------------
-        print("\nPerforming demographic fairness analysis...")
-        fairness_results = run_fairness_audit_at_k(cases, ranked_after_feedback)
-        
-        print("\n" + "=" * 60)
-        print("FAIRNESS AUDIT")
-        print("=" * 60)
+            print(
+                f"Evidence: {row['evidence']}"
+            )
 
-        # Display audit reports
-        for k, results in fairness_results.items():
-            print(f"\n=================== Cutoff k = {k} ===================")
-            for dimension, report in results.items():
-                print(f"\n--- {dimension} ---")
-                print(report.to_string(index=False))
-        print("=" * 60)
-        print("✓ Fairness analysis completed.")
+        print("\n" + "=" * 65)
+        print("Pipeline finished.")
+        print("=" * 65)
 
-        # -----------------------------------------------------
-        # 7. Write outputs
-        # -----------------------------------------------------
-        output_dir = "output"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            
-        # Save full worklist
-        explained_all.to_csv(os.path.join(output_dir, "ranked_cases.csv"), index=False)
-        
-        # Save top 20
-        top_20 = worklist.copy()
-        top_20_summary = top_20[["rank_after_feedback", "case_id", "adjusted_score", "reason", "evidence"]]
-        top_20_summary.to_csv(os.path.join(output_dir, "top_20_worklist.csv"), index=False)
-        
-        # Save fairness reports
-        # Save the k=20 report to output/fairness_report.csv
-        k_20_reports = []
-        for dim, report in fairness_results[20].items():
-            report = report.copy()
-            report.insert(0, "demographic_dimension", dim)
-            report = report.rename(columns={dim: "group_value"})
-            k_20_reports.append(report)
-        fairness_report_df = pd.concat(k_20_reports, ignore_index=True)
-        fairness_report_df.to_csv(os.path.join(output_dir, "fairness_report.csv"), index=False)
-        print("✓ Saved ranked worklist and top 20 to output/ directory.")
-
-        # -----------------------------------------------------
-        # 8. Print Top 20 table
-        # -----------------------------------------------------
-        print("\n" + "=" * 90)
-        print("TOP 20 RANKED BENEFIT CASES FOR INVESTIGATION REVIEW")
-        print("=" * 90)
-        print(f"{'Rank':<5} | {'Case ID':<10} | {'Score':<6} | {'Reason'}")
-        print("-" * 90)
-        for _, row in top_20_summary.iterrows():
-            reason = row["reason"]
-            # Truncate reason if too long for display
-            if len(reason) > 60:
-                reason = reason[:57] + "..."
-            print(f"{int(row['rank_after_feedback']):<5} | {row['case_id']:<10} | {row['adjusted_score']:<6.4f} | {reason}")
-        print("=" * 90)
-
-    except FileNotFoundError as error:
-        print(f"\nERROR: {error}")
-
-    except DataValidationError as error:
-        print(f"\nDATA VALIDATION ERROR: {error}")
+    except Exception as error:
+        print(
+            f"\nPIPELINE ERROR: {error}"
+        )
+        raise
 
 
 if __name__ == "__main__":
