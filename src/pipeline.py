@@ -107,7 +107,8 @@ def run_pipeline():
     # ---------------------------------------------------------
     # 7. Final Top 20
     # ---------------------------------------------------------
-    final_worklist = ranked_after_feedback.head(20)
+    final_worklist = ranked_after_feedback.head(20).copy()
+    final_worklist["rank"] = range(1, len(final_worklist) + 1)
 
     final_worklist = add_explanations(
         final_worklist,
