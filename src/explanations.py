@@ -128,7 +128,21 @@ def build_evidence(row: pd.Series) -> str:
     return " | ".join(evidence)
 
 
-def add_explanations(worklist: pd.DataFrame) -> pd.DataFrame:
+def build_detailed_evidence(row: pd.Series, payments: pd.DataFrame) -> str:
+    """
+    Build a detailed month-by-month payment evidence list.
+    """
+    if payments is None or payments.empty:
+        return ""
+    case_payments = payments[payments["case_id"] == row["case_id"]].sort_values("pay_month")
+    lines = []
+    for _, p_row in case_payments.iterrows():
+        ratio = p_row["amount"] / row["monthly_award"] if row["monthly_award"] > 0 else 0
+        lines.append(f"{p_row['pay_month']}: ${p_row['amount']:,.2f} ({ratio:.2f}x)")
+    return " | ".join(lines)
+
+
+def add_explanations(worklist: pd.DataFrame, payments: pd.DataFrame = None) -> pd.DataFrame:
     """
     Add plain-language reasons and supporting evidence.
     """
@@ -144,5 +158,11 @@ def add_explanations(worklist: pd.DataFrame) -> pd.DataFrame:
         build_evidence,
         axis=1
     )
+
+    if payments is not None:
+        result["detailed_evidence"] = result.apply(
+            lambda r: build_detailed_evidence(r, payments),
+            axis=1
+        )
 
     return result

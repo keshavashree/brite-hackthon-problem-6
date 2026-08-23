@@ -110,6 +110,7 @@ def run_pipeline():
 
     final_worklist = add_explanations(
         final_worklist,
+        payments=payments,
     )
 
     # ---------------------------------------------------------

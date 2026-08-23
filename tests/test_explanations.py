@@ -20,7 +20,7 @@ def get_worklist():
         top_n=20
     )
 
-    return add_explanations(worklist)
+    return add_explanations(worklist, payments=payments)
 
 
 def test_every_case_has_reason():
@@ -35,6 +35,14 @@ def test_every_case_has_evidence():
 
     assert worklist["evidence"].notna().all()
     assert (worklist["evidence"].str.len() > 0).all()
+
+
+def test_every_case_has_detailed_evidence():
+    worklist = get_worklist()
+
+    assert "detailed_evidence" in worklist.columns
+    assert worklist["detailed_evidence"].notna().all()
+    assert (worklist["detailed_evidence"].str.len() > 0).all()
 
 
 def test_worklist_still_contains_20_cases():

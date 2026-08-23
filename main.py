@@ -50,6 +50,11 @@ def main():
                 f"Evidence: {row['evidence']}"
             )
 
+            if "detailed_evidence" in row and row["detailed_evidence"]:
+                print("Monthly Details:")
+                for month_detail in row["detailed_evidence"].split(" | "):
+                    print(f"  - {month_detail}")
+
         print("\n" + "=" * 65)
         print("Pipeline finished.")
         print("=" * 65)
