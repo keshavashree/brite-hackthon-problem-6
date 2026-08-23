@@ -126,3 +126,26 @@ not treated as a financial-risk signal.
 Investigator feedback does not establish that a case is improper.
 It changes investigation prioritisation based on documented
 human review.
+
+## 2026-08-23 — Fairness Audit
+
+### Decision
+
+Audit ranking representation across age band, language preference,
+district, and tenure at multiple ranking cutoffs.
+
+### Why
+
+A Top-20 list is a small sample. A single case represents 5% of the
+selected population, so Top-20 representation alone can be unstable.
+
+We therefore compare Top-20, Top-50, Top-100, and Top-200 selection
+rates against population rates.
+
+### Boundary
+
+These metrics are descriptive governance indicators. They are not
+treated as proof of bias or proof of fairness.
+
+Demographic/context variables are not directly used to increase or
+decrease a case's financial investigation score.

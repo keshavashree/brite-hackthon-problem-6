@@ -7,6 +7,7 @@ from src.ranking import create_ranked_worklist
 from src.explanations import add_explanations
 from src.fairness import run_fairness_audit_at_k
 from src.feedback import load_feedback, apply_feedback
+from src.fairness_report import build_fairness_summary, add_interpretation
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -120,6 +121,19 @@ def run_pipeline():
         cases,
         ranked_after_feedback,
         k_values=[20, 50, 100, 200],
+    )
+
+    fairness_summary = build_fairness_summary(
+        fairness_results
+    )
+
+    fairness_summary = add_interpretation(
+        fairness_summary
+    )
+
+    fairness_summary.to_csv(
+        OUTPUT_DIR / "fairness_summary.csv",
+        index=False,
     )
 
     # ---------------------------------------------------------
